@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2d3030">
+<title>Výkup Palet</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD60m7hSErvSuOQul3kfAjWPpGfVmyVVuM",
+  authDomain: "vykup-palet.firebaseapp.com",
+  projectId: "vykup-palet",
+  storageBucket: "vykup-palet.firebasestorage.app",
+  messagingSenderId: "264591837143",
+  appId: "1:264591837143:web:5bd414b54a33a3fde26d92"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// Real-time listener — aktualizuje historii při každé změně
+const q = query(collection(db, "vykupy"), orderBy("ts", "desc"));
+onSnapshot(q, (snapshot) => {
+  const data = [];
+  snapshot.forEach(doc => data.push(doc.data()));
+  localStorage.setItem('vp_hist', JSON.stringify(data));
+  window._fbLoaded = true;
+  // Refresh stats if open
+  if (document.getElementById('screen-stats').classList.contains('open')) {
+    window.renderStats && window.renderStats();
+  }
+});
+
+// Globální funkce pro uložení do Firebase
+window.saveToFirebase = async function(rec) {
+  try {
+    await addDoc(collection(db, "vykupy"), rec);
+    return true;
+  } catch(e) {
+    console.error("Firebase error:", e);
+    return false;
+  }
+};
+</script>
+<style>
+  :root {
+    --bg:#2d3030; --bg2:#363b3a; --bg3:#414746;
+    --border:#4a5050; --white:#f2f2f2; --dim:#999; --muted:#5a6060;
+    --red:#d95f5f; --green:#6abf6a;
+    --hh:62px; --th:68px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{background:var(--bg);color:var(--white);font-family:'Barlow',sans-serif;min-height:100vh;max-width:480px;margin:0 auto;padding-bottom:90px;touch-action:manipulation}
+
+  .header{height:var(--hh);background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between}
+  .logo{display:flex;flex-direction:column;gap:0;line-height:1}
+  .logo-top,.logo-bot{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:20px;letter-spacing:7px;text-transform:uppercase;color:var(--white)}
+  .logo-bot{display:flex;gap:16px}
+  .logo-sep{height:1px;background:rgba(255,255,255,.15);margin:2px 0}
+  .hdate{text-align:right;font-size:11px;color:var(--dim);line-height:1.6}
+
+  .tbar{height:var(--th);background:var(--bg2);border-bottom:2px solid var(--border);padding:0 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:var(--hh);z-index:99}
+  .tlbl{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}
+  .tpcs{font-size:18px;color:var(--white);margin-top:2px;font-weight:800;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px}
+  .tamt{font-family:'Barlow Condensed',sans-serif;font-size:38px;font-weight:900;color:var(--white);letter-spacing:-1px}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}.blink{animation:blink .25s}
+
+  .plist{padding:10px 12px;display:flex;flex-direction:column;gap:7px}
+  .slbl{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;letter-spacing:2.5px;text-transform:uppercase;color:var(--white);padding:10px 4px 4px}
+
+  .prow{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:row;align-items:center;gap:12px;transition:border-color .12s,background .12s;justify-content:space-between}
+  .prow.on{border-color:var(--white);background:#404a49}
+  .prow.damaged{border-left:3px solid var(--red)}
+  .prow.damaged .pname{color:#e88080}
+  .prow.damaged.on{border-color:var(--red);background:#4a3535}
+  .pname{font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700}
+  .pprrow{display:flex;align-items:center;gap:6px}
+  .pprlbl{font-size:14px;color:var(--dim)}
+  .pprinp{background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--white);font-family:'Barlow',sans-serif;font-size:15px;font-weight:600;width:64px;padding:5px 6px;text-align:center;-moz-appearance:textfield}
+  .pprinp::-webkit-outer-spin-button,.pprinp::-webkit-inner-spin-button{-webkit-appearance:none}
+  .pprinp:focus{outline:none;border-color:var(--white)}
+  .psub{font-size:13px;color:var(--dim);font-weight:600;min-height:16px;margin-top:2px}
+
+  .ksc{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex-shrink:0}
+  .kb{width:70px;height:70px;background:none;border:none;font-size:36px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .08s;user-select:none;flex-shrink:0}
+  .kb:active{background:var(--border)}
+  .kb.m{color:var(--red)}.kb.p{color:var(--white)}
+  .kv{width:64px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;color:var(--white);background:none;border:none;outline:none;-moz-appearance:textfield}
+  .kv::-webkit-outer-spin-button,.kv::-webkit-inner-spin-button{-webkit-appearance:none}
+
+  .bbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--bg2);border-top:1px solid var(--border);padding:10px 12px;display:flex;gap:8px;z-index:100}
+  .btn{padding:13px;border:none;border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .12s}
+  .bico{background:var(--bg3);color:var(--dim);border:1px solid var(--border);width:50px;font-size:18px;flex-shrink:0}
+  .bico:active{background:var(--border)}
+  .bconf{flex:1;background:var(--white);color:#2d3030;font-size:16px}
+  .bconf:active{background:#ccc;transform:scale(.98)}
+  .bconf:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;transform:none}
+
+  .ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;align-items:flex-end;justify-content:center}
+  .ov.open{display:flex}
+  .modal{background:var(--bg2);border-top:2px solid var(--border);border-radius:16px 16px 0 0;width:100%;max-width:480px;padding:20px 16px 40px;max-height:88vh;overflow-y:auto}
+  .mhd{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .mtit{font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:800;letter-spacing:1px;text-transform:uppercase}
+  .mclose{background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer;padding:2px 4px;line-height:1}
+
+  .clist{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
+  .crow{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg3);border-radius:8px}
+  .cnm{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700}
+  .cdt{font-size:13px;color:var(--dim);text-align:right}
+  .ctot{display:flex;justify-content:space-between;align-items:center;padding:14px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;margin-bottom:14px}
+  .ctlbl{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+  .ctamt{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:900;color:var(--white)}
+
+  .nwrap{margin-bottom:14px}
+  .nlbl{display:block;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .ninp{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--white);font-family:'Barlow',sans-serif;font-size:15px;padding:12px 14px;outline:none;transition:border-color .12s}
+  .ninp:focus{border-color:var(--white)}.ninp::placeholder{color:var(--muted)}
+
+  .bok{width:100%;padding:15px;background:var(--white);color:#2d3030;border:none;border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:800;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+  .bok:active{opacity:.85}
+
+  .hlist{display:flex;flex-direction:column;gap:9px}
+  .hitem{background:var(--bg3);border-radius:8px;padding:11px 13px;border-left:3px solid var(--border)}
+  .hhd{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+  .hdate{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--dim)}
+  .htot{font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:800;color:var(--white)}
+  .hdet{font-size:11px;color:var(--muted);line-height:1.65}
+  .hnote{margin-top:4px;font-size:11px;color:var(--dim);font-style:italic}
+  .hempty{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px}
+
+  .toast{position:fixed;top:74px;left:50%;transform:translateX(-50%);background:var(--green);color:#1a2020;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:800;letter-spacing:1px;padding:11px 22px;border-radius:8px;z-index:300;opacity:0;transition:opacity .25s;white-space:nowrap;pointer-events:none}
+  .toast.on{opacity:1}
+
+  .screen{display:none;position:fixed;inset:0;background:var(--bg);z-index:150;overflow-y:auto;padding-bottom:90px}
+  .screen.open{display:block}
+  .screen-hd{height:var(--hh);background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+  .screen-tit{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:4px;text-transform:uppercase}
+  .sclose{background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer;padding:4px 8px}
+
+  .ptabs{display:flex;gap:6px;padding:14px 12px 4px}
+  .ptab{flex:1;padding:9px 4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--dim);cursor:pointer;text-align:center;transition:all .12s}
+  .ptab.on{background:var(--white);color:#2d3030;border-color:var(--white)}
+
+  .scards{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px}
+  .sc{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 12px}
+  .sc.wide{grid-column:1/-1}
+  .sclbl{font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .scval{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;color:var(--white);line-height:1}
+  .scsub{font-size:11px;color:var(--muted);margin-top:4px}
+
+  .sseclbl{font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);padding:14px 12px 4px}
+  .toplist{padding:0 12px;display:flex;flex-direction:column;gap:6px}
+  .topitem{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:8px}
+  .topname{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;min-width:95px}
+  .topbar{flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+  .topfill{height:100%;background:var(--white);border-radius:2px}
+  .topks{font-size:11px;color:var(--muted);min-width:36px;text-align:right}
+  .topkc{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;min-width:58px;text-align:right}
+  .nodata{text-align:center;padding:50px 20px;color:var(--muted);font-size:14px}
+
+  .hact{display:flex;gap:6px;margin-top:8px}
+  .hbtn{flex:1;padding:8px;border:none;border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+  .hbtn-edit{background:var(--bg2);color:var(--dim);border:1px solid var(--border)}
+  .hbtn-edit:active{background:var(--border)}
+  .hbtn-del{background:#4a2828;color:var(--red);border:1px solid #6b3535}
+  .hbtn-del:active{background:#6b3535}
+
+  .editrow{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg3);border-radius:8px;margin-bottom:6px}
+  .editname{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700}
+  .editinps{display:flex;align-items:center;gap:6px}
+  .editinp{background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--white);font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;width:58px;padding:5px 7px;text-align:center;-moz-appearance:textfield}
+  .editinp:focus{outline:none;border-color:var(--white)}
+  .editinp::-webkit-outer-spin-button,.editinp::-webkit-inner-spin-button{-webkit-appearance:none}
+  .editlbl{font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-top">PALETY</div>
+    <div class="logo-sep"></div>
+    <div class="logo-bot"><span>VÍ</span><span>T</span></div>
+  </div>
+  <div class="hdate" id="hdate"></div>
+</div>
+
+<div class="tbar">
+  <div>
+    <div class="tlbl">Celkem k výplatě</div>
+    <div class="tpcs" id="tpcs">0 ks</div>
+  </div>
+  <div class="tamt" id="tamt">0 Kč</div>
+</div>
+
+<div class="plist" id="plist"></div>
+
+<div class="bbar">
+  <button class="btn bico" onclick="resetAll()">↺</button>
+  <button class="btn bconf" id="bconf" onclick="openConfirm()" disabled>Potvrdit výkup</button>
+  <button class="btn bico" onclick="openHistory()">☰</button>
+  <button class="btn bico" onclick="openStats()" title="Statistiky">📊</button>
+</div>
+
+<div class="ov" id="ov-confirm">
+  <div class="modal">
+    <div class="mhd"><div class="mtit">Souhrn výkupu</div><button class="mclose" onclick="closeOv('ov-confirm')">✕</button></div>
+    <div class="clist" id="clist"></div>
+    <div class="ctot">
+      <div class="ctlbl">K výplatě</div>
+      <div class="ctamt" id="ctamt">0 Kč</div>
+    </div>
+    <div class="nwrap">
+      <label class="nlbl">Poznámka</label>
+      <input class="ninp" id="ninp" type="text" placeholder="Nepovinná poznámka k výkupu…" maxlength="120" inputmode="text">
+    </div>
+    <button class="bok" onclick="save()">✓ Uložit &amp; Vyplatit</button>
+  </div>
+</div>
+
+<div class="ov" id="ov-history">
+  <div class="modal">
+    <div class="mhd"><div class="mtit">Historie výkupů</div><button class="mclose" onclick="closeOv('ov-history')">✕</button></div>
+    <div class="hlist" id="hlist"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- STATS SCREEN -->
+<!-- EDIT MODAL -->
+<div class="ov" id="ov-edit">
+  <div class="modal">
+    <div class="mhd"><div class="mtit">Upravit výkup</div><button class="mclose" onclick="closeOv('ov-edit')">✕</button></div>
+    <div id="edit-items"></div>
+    <div class="ctot" style="margin-top:10px">
+      <div class="ctlbl">Celkem</div>
+      <div class="ctamt" id="edit-total">0 Kč</div>
+    </div>
+    <button class="bok" onclick="saveEdit()">✓ Uložit změny</button>
+  </div>
+</div>
+
+<div class="screen" id="screen-stats">
+  <div class="screen-hd">
+    <div class="screen-tit">Statistiky</div>
+    <button class="sclose" onclick="closeStats()">✕</button>
+  </div>
+  <div class="ptabs">
+    <button class="ptab on" onclick="setPeriod(0,this)">Dnes</button>
+    <button class="ptab" onclick="setPeriod(7,this)">7 dní</button>
+    <button class="ptab" onclick="setPeriod(30,this)">30 dní</button>
+  </div>
+  <div class="scards" id="scards"></div>
+  <div class="sseclbl">Nejčastěji vykupované</div>
+  <div class="toplist" id="toplist"></div>
+</div>
+
+<script>
+const P=[
+  {id:'eur_a',  n:'EUR A',         p:150},
+  {id:'eur_b',  n:'EUR B',         p:100},
+  {id:'eur_ac', n:'EUR AC',        p:40},
+  {id:'eur_bc', n:'EUR BC',        p:40},
+  {id:'std15',  n:'STD 15',        p:40},
+  {id:'std15c', n:'STD 15-C',       p:10},
+  {id:'std10',  n:'STD 10',        p:40},
+  {id:'std10c', n:'STD 10-C',       p:10},
+  {id:'std05',  n:'STD 05',        p:30},
+  {id:'std05c', n:'STD 05-C',       p:10},
+  {id:'x100',   n:'100×120',       p:50},
+  {id:'x100c',  n:'100×120-C',     p:10},
+  {id:'x100r',  n:'100×120 rámová',p:35},
+  {id:'ohradka',n:'Pal. ohrádka',  p:100},
+  {id:'cp3',    n:'CP3',           p:50},
+];
+const G=[
+  {l:'EUR PALETY', ids:['eur_a','eur_b','eur_ac','eur_bc']},
+  {l:'STANDARDNÍ', ids:['std15','std15c','std10','std10c','std05','std05c']},
+  {l:'100×120',    ids:['x100','x100c','x100r']},
+  {l:'OSTATNÍ',    ids:['ohradka','cp3']},
+];
+let C={},PR={};
+P.forEach(x=>{C[x.id]=0;PR[x.id]=x.p});
+try{const s=localStorage.getItem('vp_pr');if(s)Object.assign(PR,JSON.parse(s))}catch(e){}
+
+const fd=d=>(d?new Date(d):new Date()).toLocaleDateString('cs-CZ',{day:'2-digit',month:'2-digit',year:'numeric'});
+const ft=d=>(d?new Date(d):new Date()).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
+const ck=()=>document.getElementById('hdate').innerHTML=`<div>${fd()}</div><div>${ft()}</div>`;
+ck();setInterval(ck,30000);
+
+function render(){
+  const l=document.getElementById('plist');l.innerHTML='';
+  G.forEach(g=>{
+    const s=document.createElement('div');s.className='slbl';s.textContent=g.l;l.appendChild(s);
+    g.ids.forEach(id=>{
+      const x=P.find(q=>q.id===id);
+      const sub=C[id]>0?`${C[id]} ks × ${PR[id]} = <strong>${(C[id]*PR[id]).toLocaleString('cs-CZ')} Kč</strong>`:'';
+      const r=document.createElement('div');
+      const isDmg=['eur_ac','eur_bc','std15c','std10c','std05c','x100c'].includes(id)||id.endsWith('c');r.className='prow'+(isDmg?' damaged':'')+(C[id]>0?' on':'');r.id='r-'+id;
+      r.innerHTML=`<div>
+        <div class="pname">${x.n}</div>
+        <div class="pprrow"><span class="pprlbl">Cena/ks:</span>
+          <input class="pprinp" type="number" value="${PR[id]}" onchange="spr('${id}',this.value)" onclick="this.select()" inputmode="numeric">
+          <span class="pprlbl">Kč</span></div>
+        <div class="psub" id="s-${id}">${sub}</div>
+      </div>
+      <div class="ksc">
+        <button class="kb m" onpointerdown="sr('${id}',-1)" onpointerup="ss()" onpointerleave="ss()">−</button>
+        <input class="kv" type="number" value="${C[id]}" id="k-${id}" oninput="sc('${id}',this.value)" onclick="this.select()" inputmode="numeric" min="0">
+        <button class="kb p" onpointerdown="sr('${id}',1)" onpointerup="ss()" onpointerleave="ss()">+</button>
+      </div>`;
+      l.appendChild(r);
+    });
+  });
+}
+
+function spr(id,v){const n=parseInt(v);if(!isNaN(n)&&n>=0){PR[id]=n;localStorage.setItem('vp_pr',JSON.stringify(PR));rf(id)}}
+function sc(id,v){const n=parseInt(v);C[id]=(isNaN(n)||n<0)?0:n;rf(id)}
+function ac(id,d){C[id]=Math.max(0,(C[id]||0)+d);const e=document.getElementById('k-'+id);if(e)e.value=C[id];rf(id)}
+
+function rf(id){
+  const r=document.getElementById('r-'+id),s=document.getElementById('s-'+id);
+  const isDmg2=['eur_ac','eur_bc','std15c','std10c','std05c','x100c'].includes(id)||id.endsWith('c');if(r)r.className='prow'+(isDmg2?' damaged':'')+(C[id]>0?' on':'');
+  if(s)s.innerHTML=C[id]>0?`${C[id]} ks × ${PR[id]} = <strong>${(C[id]*PR[id]).toLocaleString('cs-CZ')} Kč</strong>`:'';
+  rt();
+}
+
+function rt(){
+  let t=0,pc=0;P.forEach(x=>{t+=C[x.id]*PR[x.id];pc+=C[x.id]});
+  const e=document.getElementById('tamt');
+  e.textContent=t.toLocaleString('cs-CZ')+' Kč';
+  e.classList.remove('blink');void e.offsetWidth;e.classList.add('blink');
+  document.getElementById('tpcs').textContent=pc+' ks celkem';
+  document.getElementById('bconf').disabled=t===0;
+}
+
+let rt1,rt2;
+function sr(id,d){ac(id,d);rt1=setTimeout(()=>{rt2=setInterval(()=>ac(id,d),75)},350)}
+function ss(){clearTimeout(rt1);clearInterval(rt2)}
+
+function resetAll(){if(!confirm('Resetovat?'))return;P.forEach(x=>{C[x.id]=0});render();rt()}
+
+function openConfirm(){
+  const a=P.filter(x=>C[x.id]>0);
+  const tot=a.reduce((s,x)=>s+C[x.id]*PR[x.id],0);
+  document.getElementById('clist').innerHTML=a.map(x=>`
+    <div class="crow"><div class="cnm">${x.n}</div>
+    <div class="cdt">${C[x.id]} ks × ${PR[x.id]} Kč<br><strong>${(C[x.id]*PR[x.id]).toLocaleString('cs-CZ')} Kč</strong></div></div>`).join('');
+  document.getElementById('ctamt').textContent=tot.toLocaleString('cs-CZ')+' Kč';
+  document.getElementById('ov-confirm').classList.add('open');
+}
+
+async function save(){
+  const a=P.filter(x=>C[x.id]>0);
+  const tot=a.reduce((s,x)=>s+C[x.id]*PR[x.id],0);
+  const note=(document.getElementById('ninp').value||'').trim();
+  const now=new Date();
+  const rec={ts:now.toISOString(),date:fd(now),time:ft(now),total:tot,note,
+    items:a.map(x=>({n:x.n,ks:C[x.id],pr:PR[x.id],sub:C[x.id]*PR[x.id]}))};
+  
+  // Ulož do Firebase (+ automaticky se synchronizuje do localStorage přes listener)
+  const bok=document.getElementById('bconf');
+  bok.disabled=true;
+  if(window.saveToFirebase){
+    const ok=await window.saveToFirebase(rec);
+    if(!ok){
+      const h=gh();h.unshift(rec);localStorage.setItem('vp_hist',JSON.stringify(h.slice(0,200)));
+    }
+  } else {
+    const h=gh();h.unshift(rec);localStorage.setItem('vp_hist',JSON.stringify(h.slice(0,200)));
+  }
+  // Zápis do Google Sheets přes GET (JSONP workaround)
+  const sheetsUrl = 'https://script.google.com/macros/s/AKfycbzNqFrILXX7CHegaTsYNq6yFne0m_3FDpHG4XtJ1lGBb0UOgtxxvxe2OZBUMonT2GOK/exec';
+  const encoded = encodeURIComponent(JSON.stringify(rec));
+  const img = new Image();
+  img.src = sheetsUrl + '?data=' + encoded;
+  console.log('Sheets request sent');
+
+  // Zápis do pokladny jako výdaj z oficiální kasy
+  const now2 = new Date();
+  const pkRec = {
+    ts: now2.toISOString(),
+    date: now2.toLocaleDateString('cs-CZ',{day:'2-digit',month:'2-digit',year:'numeric'}),
+    time: now2.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}),
+    typ: 'expense',
+    kasa: 'official',
+    person: 'Lukáš',
+    cat: 'Výkup palet',
+    amt: tot,
+    note: 'Auto z výkupní appky'
+  };
+  const pkUrl = 'https://script.google.com/macros/s/AKfycbxKhJnWxpNA5XrqOCWyOGIJK2MTG90htjPVCtJe5iUiaqS6f7ZTLMilX_gmJtV0qZll0g/exec';
+  const pkImg = new Image();
+  pkImg.src = pkUrl + '?data=' + encodeURIComponent(JSON.stringify(pkRec));
+  // Firebase pokladna
+  if(window.saveToPKFirebase) window.saveToPKFirebase(pkRec);
+
+  document.getElementById('ninp').value='';
+  closeOv('ov-confirm');
+  P.forEach(x=>{C[x.id]=0});render();rt();
+  toast('✓ Výkup uložen! '+tot.toLocaleString('cs-CZ')+' Kč');
+}
+
+function gh(){try{return JSON.parse(localStorage.getItem('vp_hist')||'[]')}catch(e){return[]}}
+
+function openHistory(){
+  renderHistory();
+  document.getElementById('ov-history').classList.add('open');
+}
+
+function renderHistory(){
+  const h=gh();
+  document.getElementById('hlist').innerHTML=h.length===0
+    ?'<div class="hempty">Žádné výkupy zatím nebyly uloženy.</div>'
+    :h.map((r,i)=>`<div class="hitem">
+      <div class="hhd"><div class="hdate">${r.date} ${r.time||''}</div><div class="htot">${r.total.toLocaleString('cs-CZ')} Kč</div></div>
+      <div class="hdet">${r.items.map(i2=>`${i2.n}: ${i2.ks}×${i2.pr} = ${i2.sub.toLocaleString('cs-CZ')} Kč`).join(' | ')}</div>
+      ${r.note?`<div class="hnote">${r.note}</div>`:''}
+      <div class="hact">
+        <button class="hbtn hbtn-edit" onclick="openEdit(${i})">✏️ Upravit</button>
+        <button class="hbtn hbtn-del" onclick="deleteRecord(${i})">🗑️ Smazat</button>
+      </div>
+    </div>`).join('');
+}
+
+let editIdx = -1;
+
+function openEdit(i){
+  editIdx = i;
+  const h = gh();
+  const r = h[i];
+  document.getElementById('edit-items').innerHTML = r.items.map((it,j)=>`
+    <div class="editrow">
+      <div class="editname">${it.n}</div>
+      <div class="editinps">
+        <div>
+          <div class="editlbl">ks</div>
+          <input class="editinp" type="number" id="eks-${j}" value="${it.ks}" min="0" inputmode="numeric" oninput="recalcEdit()">
+        </div>
+        <div>
+          <div class="editlbl">Kč/ks</div>
+          <input class="editinp" type="number" id="epr-${j}" value="${it.pr}" min="0" inputmode="numeric" oninput="recalcEdit()">
+        </div>
+      </div>
+    </div>`).join('');
+  recalcEdit();
+  document.getElementById('ov-edit').classList.add('open');
+}
+
+function recalcEdit(){
+  const h=gh();
+  const r=h[editIdx];
+  let tot=0;
+  r.items.forEach((it,j)=>{
+    const ks=parseInt(document.getElementById('eks-'+j)?.value)||0;
+    const pr=parseInt(document.getElementById('epr-'+j)?.value)||0;
+    tot+=ks*pr;
+  });
+  document.getElementById('edit-total').textContent=tot.toLocaleString('cs-CZ')+' Kč';
+}
+
+function saveEdit(){
+  const h=gh();
+  const r=h[editIdx];
+  let tot=0;
+  r.items=r.items.map((it,j)=>{
+    const ks=parseInt(document.getElementById('eks-'+j)?.value)||0;
+    const pr=parseInt(document.getElementById('epr-'+j)?.value)||0;
+    const sub=ks*pr;
+    tot+=sub;
+    return {...it,ks,pr,sub};
+  }).filter(it=>it.ks>0);
+  r.total=tot;
+  h[editIdx]=r;
+  localStorage.setItem('vp_hist',JSON.stringify(h));
+  if(window.saveToFirebase){
+    // Pro Firebase — přepíšeme celou kolekci není ideální, ale pro malý provoz OK
+    // TODO: implementovat update konkrétního dokumentu
+  }
+  closeOv('ov-edit');
+  renderHistory();
+  toast('✓ Výkup upraven');
+}
+
+function deleteRecord(i){
+  if(!confirm('Smazat tento výkup?'))return;
+  const h=gh();
+  h.splice(i,1);
+  localStorage.setItem('vp_hist',JSON.stringify(h.slice(0,200)));
+  renderHistory();
+  // Refresh stats if open
+  if(document.getElementById('screen-stats').classList.contains('open')) renderStats();
+  toast('🗑️ Výkup smazán');
+}
+
+function closeOv(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.ov').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open')}));
+
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;
+  t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600);
+}
+
+render();rt();
+
+// ── STATS ──
+let statDays = 0;
+
+function openStats() {
+  statDays = 0;
+  renderStats();
+  document.getElementById('screen-stats').classList.add('open');
+}
+
+function closeStats() {
+  document.getElementById('screen-stats').classList.remove('open');
+}
+
+function setPeriod(days, btn) {
+  statDays = days;
+  document.querySelectorAll('.ptab').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderStats();
+}
+
+function filterHist(days) {
+  const h = gh();
+  if (days === 0) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    return h.filter(r => new Date(r.ts) >= today);
+  }
+  const cutoff = new Date(Date.now() - days * 86400000);
+  return h.filter(r => new Date(r.ts) >= cutoff);
+}
+
+function renderStats() {
+  const h = filterHist(statDays);
+
+  // Summary cards
+  const total = h.reduce((s,r) => s + r.total, 0);
+  const count = h.length;
+  const avg = count > 0 ? Math.round(total / count) : 0;
+  const totalPcs = h.reduce((s,r) => s + r.items.reduce((a,i) => a + i.ks, 0), 0);
+
+  // Category breakdown
+  const catEurIds = ['eur_a','eur_b','eur_ac','eur_bc'];
+  const catStdIds = ['std15','std15c','std10','std10c','std05','std05c'];
+  const catOstIds = ['x100','x100c','x100r','ohradka','cp3'];
+  const cIds = id => catEurIds.includes(id) ? 'eur' : catStdIds.includes(id) ? 'std' : 'ost';
+
+  let eurKs=0, stdKs=0, ostKs=0, healthyKs=0, damagedKs=0;
+  h.forEach(r => r.items.forEach(i => {
+    const pid = P.find(x => x.n === i.n)?.id || '';
+    const cat = cIds(pid);
+    if (cat==='eur') eurKs += i.ks;
+    else if (cat==='std') stdKs += i.ks;
+    else ostKs += i.ks;
+    if (pid.endsWith('c')) damagedKs += i.ks;
+    else healthyKs += i.ks;
+  }));
+  const totalCatKs = eurKs + stdKs + ostKs || 1;
+  const totalHDKs  = healthyKs + damagedKs || 1;
+  const pctEur = Math.round(eurKs/totalCatKs*100);
+  const pctStd = Math.round(stdKs/totalCatKs*100);
+  const pctOst = Math.round(ostKs/totalCatKs*100);
+  const pctHealthy = Math.round(healthyKs/totalHDKs*100);
+  const pctDamaged = Math.round(damagedKs/totalHDKs*100);
+
+  document.getElementById('scards').innerHTML = `
+    <div class="sc wide">
+      <div class="sclbl">Celková útrata</div>
+      <div class="scval">${total.toLocaleString('cs-CZ')} Kč</div>
+      <div class="scsub">${totalPcs} ks palet celkem</div>
+    </div>
+    <div class="sc">
+      <div class="sclbl">Počet výkupů</div>
+      <div class="scval">${count}</div>
+    </div>
+    <div class="sc">
+      <div class="sclbl">Průměr / výkup</div>
+      <div class="scval">${avg.toLocaleString('cs-CZ')}</div>
+      <div class="scsub">Kč</div>
+    </div>
+    <div class="sc wide">
+      <div class="sclbl">Rozpad ks podle kategorie</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <div style="flex:${pctEur};background:var(--bg3);border-radius:6px;padding:8px 10px;min-width:0">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800">${eurKs} ks</div>
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">EUR</div>
+          <div style="font-size:10px;color:var(--dim)">${pctEur} %</div>
+        </div>
+        <div style="flex:${pctStd};background:var(--bg3);border-radius:6px;padding:8px 10px;min-width:0">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800">${stdKs} ks</div>
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">STD</div>
+          <div style="font-size:10px;color:var(--dim)">${pctStd} %</div>
+        </div>
+        <div style="flex:${pctOst};background:var(--bg3);border-radius:6px;padding:8px 10px;min-width:0">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800">${ostKs} ks</div>
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">OSTATNÍ</div>
+          <div style="font-size:10px;color:var(--dim)">${pctOst} %</div>
+        </div>
+      </div>
+    </div>
+    <div class="sc wide">
+      <div class="sclbl">Zdravé vs. poškozené (-C)</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <div style="flex:${pctHealthy};background:var(--bg3);border-radius:6px;padding:8px 10px;min-width:0">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;color:var(--green)">${healthyKs} ks</div>
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">ZDRAVÉ</div>
+          <div style="font-size:10px;color:var(--dim)">${pctHealthy} %</div>
+        </div>
+        <div style="flex:${pctDamaged || 1};background:var(--bg3);border-radius:6px;padding:8px 10px;min-width:0">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;color:var(--red)">${damagedKs} ks</div>
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1px">POŠKOZENÉ</div>
+          <div style="font-size:10px;color:var(--dim)">${pctDamaged} %</div>
+        </div>
+      </div>
+    </div>`;
+
+  // Top pallets
+  const palMap = {};
+  h.forEach(r => r.items.forEach(i => {
+    if (!palMap[i.n]) palMap[i.n] = { ks: 0, kc: 0 };
+    palMap[i.n].ks += i.ks;
+    palMap[i.n].kc += i.sub;
+  }));
+  const sorted = Object.entries(palMap).sort((a,b) => b[1].ks - a[1].ks);
+  const maxKs = sorted.length > 0 ? sorted[0][1].ks : 1;
+
+  const toplist = document.getElementById('toplist');
+  if (sorted.length === 0) {
+    toplist.innerHTML = '<div class="nodata">Žádná data pro toto období.</div>';
+    return;
+  }
+  toplist.innerHTML = sorted.map(([name, v]) => `
+    <div class="topitem">
+      <div class="topname">${name}</div>
+      <div class="topbar"><div class="topfill" style="width:${Math.round(v.ks/maxKs*100)}%"></div></div>
+      <div class="topks">${v.ks} ks</div>
+      <div class="topkc">${v.kc.toLocaleString('cs-CZ')} Kč</div>
+    </div>`).join('');
+}
+</script>
+</body>
+</html>
