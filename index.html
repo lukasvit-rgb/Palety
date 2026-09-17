@@ -13,7 +13,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyD60m7hSErvSuOQul3kfAjWPpGfVmyVVuM",
@@ -50,6 +51,89 @@ window.saveToFirebase = async function(rec) {
     return false;
   }
 };
+
+/* ============ PŘIHLÁŠENÍ + ROLE ============
+   Stejný Firebase projekt (vykup-palet) appka už používá pro data, takže
+   Lukáš/Ondřej/Martin se přihlásí úplně stejnými údaji jako do appky Dashboard
+   — žádný nový účet není potřeba. Role (majitel/sklad) se nespravuje v kódu,
+   ale v Databázi (kolekce "lide": email, jméno, role) přes obrazovku
+   Administrace — vidí a upravuje ji jen majitel. Neznámý e-mail (chybí v
+   "lide") dostane vždy nejnižší oprávnění (sklad), nikdy automaticky majitele. */
+const auth = getAuth(app);
+window._lide = [];
+window.currentRole = 'sklad';
+window.currentPerson = '';
+window.currentEmail = '';
+
+function resolveRoleUI(){
+  const email = (window.currentEmail||'').toLowerCase();
+  const rec = window._lide.find(l => (l.email||'').toLowerCase() === email);
+  window.currentRole = rec ? rec.role : 'sklad';
+  window.currentPerson = rec ? rec.jmeno : (window.currentEmail || '?');
+  const badge = document.getElementById('who-name');
+  if(badge) badge.textContent = window.currentPerson;
+  const isMajitel = window.currentRole === 'majitel';
+  const adminBtn = document.getElementById('btn-admin');
+  if(adminBtn) adminBtn.style.display = isMajitel ? '' : 'none';
+  const rentTab = document.getElementById('stab-rentabilita-btn');
+  if(rentTab) rentTab.style.display = isMajitel ? '' : 'none';
+  if(!isMajitel && document.getElementById('stab-rentabilita').style.display !== 'none'){
+    // Skladník neuvidí Rentabilitu ani po přepnutí do Administrace a zpátky — vrátí na Přehled.
+    document.getElementById('stab-rentabilita').style.display = 'none';
+    document.getElementById('stab-prehled').style.display = 'block';
+    document.querySelectorAll('.stab').forEach(b=>b.classList.remove('on'));
+    const prehledBtn = document.querySelector('.stab');
+    if(prehledBtn) prehledBtn.classList.add('on');
+  }
+  if(window.renderAdmin) window.renderAdmin();
+}
+
+onSnapshot(collection(db,'lide'), snap => {
+  window._lide = snap.docs.map(d => ({id:d.id, ...d.data()}));
+  resolveRoleUI();
+}, err => console.error('lide', err));
+
+onAuthStateChanged(auth, user => {
+  const overlay = document.getElementById('login-overlay');
+  const err = document.getElementById('login-err');
+  if(err) err.textContent = '';
+  if(user){
+    window.currentEmail = user.email || '';
+    resolveRoleUI();
+    if(overlay) overlay.style.display = 'none';
+  } else {
+    window.currentEmail = ''; window.currentPerson=''; window.currentRole='sklad';
+    if(overlay) overlay.style.display = 'flex';
+  }
+});
+
+window.doLogin = function(email, heslo){
+  const btn = document.getElementById('login-btn');
+  const err = document.getElementById('login-err');
+  if(btn) btn.disabled = true;
+  if(err) err.textContent = '';
+  signInWithEmailAndPassword(auth, (email||'').trim(), heslo||'').catch(e => {
+    if(err) err.textContent = 'Nesprávný e-mail nebo heslo.';
+  }).finally(()=>{ if(btn) btn.disabled = false; });
+};
+window.doLogout = function(){ signOut(auth); };
+
+// ── ADMINISTRACE (jen majitel): správa lidí a rolí, kolekce "lide" ──
+window.lideSave = function(id, email, jmeno, role){
+  email = (email||'').trim().toLowerCase();
+  jmeno = (jmeno||'').trim();
+  if(!email || !jmeno){ window.toast && window.toast('⚠ Vyplň e-mail i jméno'); return; }
+  const docId = id || email.replace(/[^a-z0-9]/g,'_');
+  setDoc(doc(db,'lide',docId), {email, jmeno, role: role==='majitel'?'majitel':'sklad'}).then(()=>{
+    window.toast && window.toast('✓ Uloženo');
+    window._adminEditingId = null;
+    window.renderAdmin && window.renderAdmin();
+  }).catch(e=>{ console.error(e); window.toast && window.toast('⚠ Uložení selhalo'); });
+};
+window.lideDelete = function(id){
+  if(!confirm('Smazat tohoto člověka? Přijde o přístup do appky.')) return;
+  deleteDoc(doc(db,'lide',id)).catch(e=>console.error(e));
+};
 </script>
 <style>
   :root {
@@ -67,6 +151,10 @@ window.saveToFirebase = async function(rec) {
   .logo-bot{display:flex;gap:16px}
   .logo-sep{height:1px;background:rgba(255,255,255,.15);margin:2px 0}
   .hdate{text-align:right;font-size:11px;color:var(--dim);line-height:1.6}
+  .whowrap{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+  .who{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .wholink{background:none;border:none;color:var(--dim);font-size:15px;cursor:pointer;padding:0;line-height:1}
+  .wholink:active{color:var(--white)}
 
   .tbar{height:var(--th);background:var(--bg2);border-bottom:2px solid var(--border);padding:0 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:var(--hh);z-index:99}
   .tlbl{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}
@@ -200,13 +288,38 @@ window.saveToFirebase = async function(rec) {
 </head>
 <body>
 
+<div id="login-overlay" style="display:flex;position:fixed;inset:0;background:var(--bg);z-index:400;align-items:center;justify-content:center;padding:20px">
+  <div style="width:100%;max-width:340px">
+    <div class="logo" style="align-items:center;margin-bottom:28px">
+      <div class="logo-top" style="text-align:center">PALETY</div>
+      <div class="logo-sep"></div>
+      <div class="logo-bot" style="justify-content:center"><span>VÍ</span><span>T</span></div>
+    </div>
+    <form onsubmit="event.preventDefault();window.doLogin(document.getElementById('login-email').value,document.getElementById('login-pass').value)">
+      <div class="nwrap">
+        <label class="nlbl">E-mail</label>
+        <input class="ninp" id="login-email" type="email" placeholder="jmeno@email.cz" autocomplete="username" required>
+      </div>
+      <div class="nwrap">
+        <label class="nlbl">Heslo</label>
+        <input class="ninp" id="login-pass" type="password" placeholder="Heslo" autocomplete="current-password" required>
+      </div>
+      <div id="login-err" style="color:var(--red);font-size:13px;margin-bottom:12px;min-height:16px"></div>
+      <button class="bok" id="login-btn" type="submit">Přihlásit se</button>
+    </form>
+  </div>
+</div>
+
 <div class="header">
   <div class="logo">
     <div class="logo-top">PALETY</div>
     <div class="logo-sep"></div>
     <div class="logo-bot"><span>VÍ</span><span>T</span></div>
   </div>
-  <div class="hdate" id="hdate"></div>
+  <div class="whowrap">
+    <div class="hdate" id="hdate"></div>
+    <div class="who"><span id="who-name"></span><button class="wholink" onclick="doLogout()" title="Odhlásit">⏻</button></div>
+  </div>
 </div>
 
 <div class="tbar">
@@ -224,6 +337,7 @@ window.saveToFirebase = async function(rec) {
   <button class="btn bconf" id="bconf" onclick="openConfirm()" disabled>Potvrdit výkup</button>
   <button class="btn bico" onclick="openHistory()">☰</button>
   <button class="btn bico" onclick="openStats()" title="Statistiky">📊</button>
+  <button class="btn bico" id="btn-admin" onclick="openAdmin()" title="Administrace" style="display:none">👤</button>
 </div>
 
 <div class="ov" id="ov-confirm">
@@ -279,7 +393,7 @@ window.saveToFirebase = async function(rec) {
   <!-- Hlavní záložky -->
   <div class="stabs">
     <button class="stab on" onclick="setStatsTab('prehled',this)">Přehled</button>
-    <button class="stab" onclick="setStatsTab('rentabilita',this)">Rentabilita</button>
+    <button class="stab" id="stab-rentabilita-btn" onclick="setStatsTab('rentabilita',this)">Rentabilita</button>
   </div>
 
   <!-- PŘEHLED TAB -->
@@ -320,6 +434,35 @@ window.saveToFirebase = async function(rec) {
       <input type="date" id="rent-to" class="date-inp" onchange="renderRentabilita()">
     </div>
     <div id="rent-result"></div>
+  </div>
+</div>
+
+<div class="screen" id="screen-admin">
+  <div class="screen-hd">
+    <div class="screen-tit">Administrace</div>
+    <button class="sclose" onclick="closeAdmin()">✕</button>
+  </div>
+  <div style="padding:14px 12px">
+    <div class="sseclbl" style="padding:0 0 8px">Lidé a role</div>
+    <div id="admin-list"></div>
+    <div class="sseclbl" id="admin-form-lbl" style="padding:20px 0 8px">Přidat člověka</div>
+    <div class="nwrap">
+      <label class="nlbl">Jméno</label>
+      <input class="ninp" id="admin-jmeno" type="text" placeholder="Jméno">
+    </div>
+    <div class="nwrap">
+      <label class="nlbl">E-mail</label>
+      <input class="ninp" id="admin-email" type="email" placeholder="jmeno@email.cz">
+    </div>
+    <div class="nwrap">
+      <label class="nlbl">Role</label>
+      <select class="ninp" id="admin-role">
+        <option value="sklad">Sklad</option>
+        <option value="majitel">Majitel</option>
+      </select>
+    </div>
+    <button class="bok" onclick="adminSubmit()">✓ Uložit</button>
+    <button class="hbtn hbtn-edit" id="admin-cancel-btn" style="display:none;width:100%;margin-top:8px;padding:12px" onclick="adminCancelEdit()">Zrušit úpravu</button>
   </div>
 </div>
 
@@ -439,6 +582,7 @@ async function save(){
   const note=(document.getElementById('ninp').value||'').trim();
   const now=new Date();
   const rec={ts:now.toISOString(),date:fd(now),time:ft(now),total:tot,note,
+    person:window.currentPerson||'',
     items:a.map(x=>({n:x.n,ks:C[x.id],pr:PR[x.id],sub:C[x.id]*PR[x.id]}))};
   
   // Ulož do Firebase (+ automaticky se synchronizuje do localStorage přes listener)
@@ -467,7 +611,7 @@ async function save(){
     time: now2.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}),
     typ: 'expense',
     kasa: 'official',
-    person: 'Lukáš',
+    person: window.currentPerson || 'Lukáš',
     cat: 'Výkup palet',
     amt: tot,
     note: 'Auto z výkupní appky'
@@ -711,6 +855,59 @@ function openStats() {
 
 function closeStats() {
   document.getElementById('screen-stats').classList.remove('open');
+}
+
+// ── ADMINISTRACE (jen majitel) ──
+function openAdmin() {
+  renderAdmin();
+  document.getElementById('screen-admin').classList.add('open');
+}
+function closeAdmin() {
+  document.getElementById('screen-admin').classList.remove('open');
+  adminCancelEdit();
+}
+function renderAdmin() {
+  const list = document.getElementById('admin-list');
+  if (!list) return;
+  const lide = (window._lide || []).slice().sort((a,b) => (a.jmeno||'').localeCompare(b.jmeno||'', 'cs'));
+  if (lide.length === 0) {
+    list.innerHTML = '<div class="hempty">Zatím žádní lidé.</div>';
+    return;
+  }
+  list.innerHTML = lide.map(p => `
+    <div class="hitem">
+      <div class="hhd"><div class="hdate">${p.jmeno || '(bez jména)'}</div><div style="font-size:11px;color:var(--dim);text-transform:uppercase;font-weight:700">${p.role === 'majitel' ? 'Majitel' : 'Sklad'}</div></div>
+      <div class="hdet">${p.email || ''}</div>
+      <div class="hact">
+        <button class="hbtn hbtn-edit" onclick="adminEdit('${p.id}')">Upravit</button>
+        <button class="hbtn hbtn-del" onclick="lideDelete('${p.id}')">Smazat</button>
+      </div>
+    </div>`).join('');
+}
+function adminEdit(id) {
+  const p = (window._lide || []).find(x => x.id === id);
+  if (!p) return;
+  window._adminEditingId = id;
+  document.getElementById('admin-jmeno').value = p.jmeno || '';
+  document.getElementById('admin-email').value = p.email || '';
+  document.getElementById('admin-role').value = p.role === 'majitel' ? 'majitel' : 'sklad';
+  document.getElementById('admin-form-lbl').textContent = 'Upravit člověka';
+  document.getElementById('admin-cancel-btn').style.display = 'block';
+}
+function adminCancelEdit() {
+  window._adminEditingId = null;
+  document.getElementById('admin-jmeno').value = '';
+  document.getElementById('admin-email').value = '';
+  document.getElementById('admin-role').value = 'sklad';
+  document.getElementById('admin-form-lbl').textContent = 'Přidat člověka';
+  document.getElementById('admin-cancel-btn').style.display = 'none';
+}
+function adminSubmit() {
+  const jmeno = document.getElementById('admin-jmeno').value;
+  const email = document.getElementById('admin-email').value;
+  const role = document.getElementById('admin-role').value;
+  window.lideSave(window._adminEditingId, email, jmeno, role);
+  adminCancelEdit();
 }
 
 function setPeriod(days, btn) {
