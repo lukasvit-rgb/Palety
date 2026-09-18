@@ -14,7 +14,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyD60m7hSErvSuOQul3kfAjWPpGfVmyVVuM",
@@ -146,6 +146,26 @@ window.doLoginGoogle = function(){
   });
 };
 getRedirectResult(auth).catch(function(e){ console.error('redirect result', e); });
+
+/* ── ZAPOMENUTÉ HESLO ──
+   Appka hesla nezná (Firebase je neukládá čitelně), takže je nejde dohledat — jen
+   poslat odkaz na nastavení nového. Nové heslo pak platí ve všech appkách Palety Vít,
+   protože všechny používají stejné účty. Stejné tlačítko má Dashboard i Třídicí protokol. */
+window.doForgot = function(){
+  const email = (document.getElementById('login-email').value||'').trim();
+  const err = document.getElementById('login-err');
+  if(!err) return;
+  if(!email){ err.style.color = 'var(--red)'; err.textContent = 'Napiš nejdřív svůj e-mail nahoře.'; return; }
+  sendPasswordResetEmail(auth, email).then(function(){
+    err.style.color = 'var(--green)';
+    err.textContent = 'Odkaz na nastavení hesla poslaný na ' + email + '. Kdyby nedošel, koukni do spamu.';
+  }).catch(function(e){
+    console.error('reset', e);
+    err.style.color = 'var(--red)';
+    err.textContent = 'Nepovedlo se poslat e-mail — zkontroluj, že je adresa správně.';
+  });
+};
+
 
 
 // ── ADMINISTRACE (jen majitel): správa lidí a rolí, kolekce "lide" ──
@@ -338,6 +358,7 @@ window.lideDelete = function(id){
       </div>
       <div id="login-err" style="color:var(--red);font-size:13px;margin-bottom:12px;min-height:16px"></div>
       <button class="bok" id="login-btn" type="submit">Přihlásit se</button>
+      <button type="button" id="forgot-btn" onclick="window.doForgot()" style="display:block;width:100%;background:none;border:none;color:inherit;opacity:.55;font-size:12.5px;text-decoration:underline;cursor:pointer;padding:10px 4px 2px;font-family:inherit">Zapomenuté heslo?</button>
     </form>
   </div>
 </div>
